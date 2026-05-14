@@ -1,0 +1,77 @@
+# WARNING: This is an ANTI-PATTERN example showing what NOT to do!
+# This Dockerfile demonstrates the problems with complex bash scripts in containers.
+# See the main Containerfile for the correct approach using Ansible.
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+# Installing WildFly and configuring it with bash spaghetti...
+# Problems with this approach:
+# 1. Hard to test without building the entire image
+# 2. Not idempotent - running twice might fail
+# 3. Error prone - bash escaping, timing issues
+# 4. Hard to debug - must rebuild from scratch
+# 5. Not reusable - container-only
+
+RUN microdnf install -y java-17-openjdk-headless wget unzip && \
+    microdnf clean all && \
+    # Download and install WildFly
+    cd /opt && \
+    wget https://github.com/wildfly/wildfly/releases/download/31.0.0.Final/wildfly-31.0.0.Final.tar.gz && \
+    tar -xzf wildfly-31.0.0.Final.tar.gz && \
+    mv wildfly-31.0.0.Final wildfly && \
+    rm wildfly-31.0.0.Final.tar.gz && \
+    # Create wildfly user and group
+    groupadd -r wildfly && \
+    useradd -r -g wildfly -d /opt/wildfly -s /sbin/nologin wildfly && \
+    chown -R wildfly:wildfly /opt/wildfly && \
+    # Download PostgreSQL JDBC driver
+    mkdir -p /opt/wildfly/modules/org/postgresql/main && \
+    cd /opt/wildfly/modules/org/postgresql/main && \
+    wget https://jdbc.postgresql.org/download/postgresql-42.7.1.jar && \
+    # Create module.xml for PostgreSQL driver (XML in bash = pain!)
+    cat > module.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<module xmlns="urn:jboss:module:1.9" name="org.postgresql">
+    <resources>
+        <resource-root path="postgresql-42.7.1.jar"/>
+    </resources>
+    <dependencies>
+        <module name="javax.api"/>
+        <module name="javax.transaction.api"/>
+    </dependencies>
+</module>
+EOF
+
+# Start server in admin-only mode to configure it
+# PROBLEM: This is brittle! What if the server takes longer than 10 seconds?
+RUN /opt/wildfly/bin/standalone.sh --admin-only & \
+    WILDFLY_PID=$! && \
+    sleep 10 && \
+    # Add PostgreSQL driver (long, brittle CLI command)
+    /opt/wildfly/bin/jboss-cli.sh --connect \
+      --command='/subsystem=datasources/jdbc-driver=postgresql:add(driver-name=postgresql,driver-module-name=org.postgresql,driver-class-name=org.postgresql.Driver)' && \
+    # Add datasource (even longer command with hardcoded secrets!)
+    /opt/wildfly/bin/jboss-cli.sh --connect \
+      --command='data-source add --name=PostgresDS --jndi-name=java:jboss/datasources/PostgresDS --driver-name=postgresql --connection-url=jdbc:postgresql://postgres:5432/mydb --user-name=user --password=password --use-ccm=true --max-pool-size=25 --blocking-timeout-wait-millis=5000 --enabled=true --driver-class=org.postgresql.Driver --jta=true --use-java-context=true --valid-connection-checker-class-name=org.jboss.jca.adapters.jdbc.extensions.postgres.PostgreSQLValidConnectionChecker --exception-sorter-class-name=org.jboss.jca.adapters.jdbc.extensions.postgres.PostgreSQLExceptionSorter' && \
+    # Configure JVM heap (using sed on config files is fragile)
+    sed -i 's/-Xmx512m/-Xmx2048m/g' /opt/wildfly/bin/standalone.conf && \
+    sed -i 's/-Xms64m/-Xms512m/g' /opt/wildfly/bin/standalone.conf && \
+    # Configure clustering (JGroups)
+    /opt/wildfly/bin/jboss-cli.sh --connect \
+      --command='/subsystem=jgroups/channel=ee:write-attribute(name=stack,value=tcp)' && \
+    # Stop the server
+    /opt/wildfly/bin/jboss-cli.sh --connect --command=':shutdown' && \
+    wait $WILDFLY_PID
+
+USER wildfly
+EXPOSE 8080 9990
+CMD ["/opt/wildfly/bin/standalone.sh", "-b", "0.0.0.0", "-bmanagement", "0.0.0.0"]
+
+# Additional problems with this approach:
+# - Passwords are baked into the image (security risk!)
+# - Can't test configuration without building
+# - If it fails, you start from scratch
+# - Configuration is not reusable for VMs or bare metal
+# - No validation until runtime
+# - Difficult to maintain and modify
+# - Not idempotent (running twice might create duplicates)

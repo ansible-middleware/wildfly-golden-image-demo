@@ -1,0 +1,6 @@
+---
+collections:
+  - name: middleware_automation.wildfly
+    version: ">=1.5.0"
+  - name: ansible.posix
+    version: ">=1.5.0"

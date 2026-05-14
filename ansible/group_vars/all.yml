@@ -1,0 +1,40 @@
+---
+# WildFly Installation Configuration
+wildfly_version: '39.0.1.Final'
+wildfly_install_workdir: '/opt/wildfly/'
+wildfly_archive_dir: "{{ wildfly_install_workdir }}"
+wildfly_home: "{{ wildfly_install_workdir }}wildfly-{{ wildfly_version }}/"
+wildfly_download_baseurl: 'https://github.com/wildfly/wildfly/releases/download'
+wildfly_archive_filename: "wildfly-{{ wildfly_version }}.zip"
+wildfly_install_download_url: "{{ wildfly_download_baseurl }}/{{ wildfly_version }}/{{ wildfly_archive_filename }}"
+wildfly_user: wildfly
+wildfly_group: wildfly
+wildfly_offline_install: false
+
+# Download configuration
+wildfly_install_download_controller_download_dir: "/tmp"
+
+# Java configuration
+wildfly_java_version: 17
+wildfly_java_package_name: "java-{{ wildfly_java_version }}-openjdk-headless"
+
+# JVM Tuning Parameters
+wildfly_java_opts:
+  - '-Xms512m'
+  - '-Xmx2048m'
+  - '-XX:MetaspaceSize=256m'
+  - '-XX:MaxMetaspaceSize=512m'
+  - '-XX:+UseG1GC'
+  - '-XX:MaxGCPauseMillis=200'
+  - '-Djava.net.preferIPv4Stack=true'
+
+# JDBC Drivers Configuration
+jdbc_drivers:
+  - name: org.postgresql
+    version: '42.7.1'
+    jar_file: postgresql-42.7.1.jar
+    url: https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
+
+# Note: Datasource configuration would typically be done at runtime via CLI
+# or management API. For a golden image, we only install the drivers.
+# Datasources can be configured post-deployment based on environment.

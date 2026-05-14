@@ -1,0 +1,61 @@
+---
+- name: Configure WildFly Golden Container Image
+  hosts: local
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - group_vars/all.yml
+
+  pre_tasks:
+    - name: Display configuration summary
+      ansible.builtin.debug:
+        msg:
+          - "Configuring WildFly {{ wildfly_version }}"
+          - "Install directory: {{ wildfly_home }}"
+
+  roles:
+    - role: middleware_automation.wildfly.wildfly_install
+
+  tasks:
+    - name: Install JDBC drivers
+      when: jdbc_drivers is defined and jdbc_drivers | length > 0
+      ansible.builtin.include_role:
+        name: middleware_automation.wildfly.wildfly_driver
+      vars:
+        wildfly_driver_module_name: "{{ item.name }}"
+        wildfly_driver_version: "{{ item.version }}"
+        wildfly_driver_jar_filename: "{{ item.jar_file }}"
+        wildfly_driver_jar_url: "{{ item.url }}"
+      loop: "{{ jdbc_drivers }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Apply JVM tuning configuration
+      when: wildfly_java_opts is defined and wildfly_java_opts | length > 0
+      ansible.builtin.lineinfile:
+        path: "{{ wildfly_home }}/bin/standalone.conf"
+        regexp: '^JAVA_OPTS='
+        line: 'JAVA_OPTS="{{ wildfly_java_opts | join(" ") }}"'
+        backup: true
+
+    - name: Set file permissions
+      ansible.builtin.file:
+        path: "{{ wildfly_home }}"
+        owner: "{{ wildfly_user }}"
+        group: "{{ wildfly_group }}"
+        recurse: true
+
+    - name: Validate WildFly installation
+      ansible.builtin.stat:
+        path: "{{ wildfly_home }}/bin/standalone.sh"
+      register: wildfly_bin
+      failed_when: not wildfly_bin.stat.exists
+
+    - name: Display success message
+      ansible.builtin.debug:
+        msg:
+          - "✅ WildFly {{ wildfly_version }} configured successfully"
+          - "Install directory: {{ wildfly_home }}"
+          - "User: {{ wildfly_user }}"
+          - "JDBC drivers: {{ jdbc_drivers | map(attribute='name') | list | join(', ') if jdbc_drivers is defined else 'none' }}"
