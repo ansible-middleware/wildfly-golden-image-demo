@@ -1,0 +1,1 @@
+# wildfly-golden-image-demo
