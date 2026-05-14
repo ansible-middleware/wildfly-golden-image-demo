@@ -12,8 +12,10 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/wildfly-golden
+  GHCR_REGISTRY: ghcr.io
+  GHCR_IMAGE_NAME: ${{ github.repository }}/wildfly-golden
+  DOCKERHUB_REGISTRY: docker.io
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/wildfly-golden
 
 jobs:
   build-and-test:
@@ -90,8 +92,8 @@ jobs:
           # Check if wildfly user exists
           docker exec ${{ steps.test-start.outputs.test_container_id }} id wildfly
 
-          # Verify WildFly installation
-          docker exec ${{ steps.test-start.outputs.test_container_id }} test -f /opt/wildfly/bin/standalone.sh
+          # Verify WildFly installation (using /current symlink)
+          docker exec ${{ steps.test-start.outputs.test_container_id }} test -f /opt/wildfly/current/bin/standalone.sh
 
           # Check Java version
           docker exec ${{ steps.test-start.outputs.test_container_id }} java -version
@@ -107,34 +109,53 @@ jobs:
             docker rm ${{ steps.test-start.outputs.test_container_id }} || true
           fi
 
-      - name: Log in to Container Registry
+      - name: Log in to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag and push to registry
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKERHUB_REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag and push to registries
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           # Generate version tag
           VERSION=$(date +%Y%m%d)-${GITHUB_SHA::7}
 
-          # Tag the image
-          docker tag wildfly-golden:test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION
-          docker tag wildfly-golden:test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # Tag for GitHub Container Registry
+          docker tag wildfly-golden:test ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:$VERSION
+          docker tag wildfly-golden:test ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:latest
 
-          # Push both tags
-          echo "Pushing image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION
+          # Tag for Docker Hub
+          docker tag wildfly-golden:test ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:$VERSION
+          docker tag wildfly-golden:test ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest
 
-          echo "Pushing image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # Push to GitHub Container Registry
+          echo "Pushing to GitHub Container Registry..."
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:$VERSION
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:latest
 
-          echo "✅ Successfully pushed golden image:"
-          echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
-          echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # Push to Docker Hub
+          echo "Pushing to Docker Hub..."
+          docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:$VERSION
+          docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest
+
+          echo "✅ Successfully pushed golden image to both registries:"
+          echo "GitHub Container Registry:"
+          echo "  - ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:$VERSION"
+          echo "  - ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:latest"
+          echo "Docker Hub:"
+          echo "  - ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:$VERSION"
+          echo "  - ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest"
 
       - name: Generate build summary
         if: always()
@@ -151,6 +172,11 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "## Published Images" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+            echo "### GitHub Container Registry" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:$VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Docker Hub" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:$VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
           fi
