@@ -29,18 +29,18 @@ RUN microdnf install -y java-17-openjdk-headless wget unzip && \
     cd /opt/wildfly/modules/org/postgresql/main && \
     wget https://jdbc.postgresql.org/download/postgresql-42.7.1.jar && \
     # Create module.xml for PostgreSQL driver (XML in bash = pain!)
-    cat > module.xml << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<module xmlns="urn:jboss:module:1.9" name="org.postgresql">
-    <resources>
-        <resource-root path="postgresql-42.7.1.jar"/>
-    </resources>
-    <dependencies>
-        <module name="javax.api"/>
-        <module name="javax.transaction.api"/>
-    </dependencies>
-</module>
-EOF
+    printf '%s\n' \
+      '<?xml version="1.0" encoding="UTF-8"?>' \
+      '<module xmlns="urn:jboss:module:1.9" name="org.postgresql">' \
+      '    <resources>' \
+      '        <resource-root path="postgresql-42.7.1.jar"/>' \
+      '    </resources>' \
+      '    <dependencies>' \
+      '        <module name="javax.api"/>' \
+      '        <module name="javax.transaction.api"/>' \
+      '    </dependencies>' \
+      '</module>' \
+      > module.xml
 
 # Start server in admin-only mode to configure it
 # PROBLEM: This is brittle! What if the server takes longer than 10 seconds?
