@@ -54,8 +54,16 @@ docker run -d -p 8080:8080 -p 9990:9990 \
 curl http://localhost:8080
 
 # Access management console
-curl http://localhost:9990/management
+# Username: admin
+# Password: admin
+open http://localhost:9990/console
 ```
+
+### Management Console Credentials
+
+- **Username**: `admin`
+- **Password**: `admin`
+- **Console URL**: http://localhost:9990/console
 
 ### Test Ansible Configuration (Without Building)
 
@@ -131,18 +139,45 @@ All configuration is in Ansible variables (`ansible/group_vars/all.yml`):
 
 ## Deployment
 
-### Kubernetes
+### Local Kubernetes (Minikube)
 
 ```bash
+# Install Minikube
+brew install minikube
+
+# Start Minikube cluster
+minikube start
+
+# Load the Docker image into Minikube
+minikube image load wildfly-golden:demo
+
+# Create database secret
+kubectl create secret generic wildfly-db-secret \
+  --from-literal=host=postgres \
+  --from-literal=database=mydb \
+  --from-literal=username=wildfly \
+  --from-literal=password=supersecret
+
 # Deploy to Kubernetes
 kubectl apply -f kubernetes/
 
-# Check deployment
+# Check deployment status
 kubectl get pods -l app=wildfly
 
-# Test the service
+# Access the Kubernetes Dashboard
+minikube dashboard
+
+# Access the WildFly service
+minikube service wildfly --url
+
+# Or use port-forward
 kubectl port-forward svc/wildfly 8080:8080
 curl http://localhost:8080
+
+# Access Management Console
+kubectl port-forward svc/wildfly 9990:9990
+open http://localhost:9990/console
+# Login: admin / admin
 ```
 
 ### OpenShift
@@ -186,10 +221,6 @@ wildfly_java_opts:
   - '-XX:+UseG1GC'           # Add G1 garbage collector
 ```
 
-## Demo Presentation
-
-See [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for a step-by-step presentation guide.
-
 ## Contributing
 
 1. Fork the repository
@@ -201,7 +232,7 @@ See [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for a step-by-step presentation
 ## Resources
 
 - [Ansible WildFly Collection](https://github.com/ansible-middleware/wildfly)
-- [Buildah Documentation](https://buildah.io)
+- [Buildah Guides](https://docs.docker.com/guides/)
 - [WildFly Documentation](https://docs.wildfly.org/)
 - [GitHub Actions](https://docs.github.com/actions)
 
@@ -211,4 +242,4 @@ Apache License 2.0
 
 ## Contact
 
-Questions? Open an issue or reach out to [your contact info].
+Questions? Open an issue or reach out to [Ranabir](https://www.linkedin.com/in/ranabir-chakraborty/).

@@ -190,43 +190,74 @@ git push
 
 ---
 
-### Part 6: Deploying to Kubernetes (3 min)
+### Part 6: Deploying to Kubernetes with Minikube (5 min)
 
 **Script:**
-"Finally, let's deploy this to Kubernetes..."
+"Now let's deploy this to a local Kubernetes cluster using Minikube..."
 
 **Actions:**
 ```bash
+# Start Minikube (if not already running)
+minikube start
+
+# Verify cluster is ready
+kubectl get nodes
+
+# Load the Docker image into Minikube
+minikube image load wildfly-golden:demo
+
 # Show Kubernetes manifests
 cat kubernetes/deployment.yml
 cat kubernetes/service.yml
 
-# Create secret (use template)
+# Create database secret
 kubectl create secret generic wildfly-db-secret \
-  --from-literal=host=postgres.svc.cluster.local \
+  --from-literal=host=postgres \
   --from-literal=database=mydb \
   --from-literal=username=wildfly \
   --from-literal=password=supersecret
 
-# Deploy
-kubectl apply -f kubernetes/
+# Deploy to Kubernetes
+kubectl apply -f kubernetes/deployment.yml
+kubectl apply -f kubernetes/service.yml
 
-# Watch it come up
+# Watch pods come up
 kubectl get pods -l app=wildfly -w
+# Press Ctrl+C when all 3 pods are Running
 
 # Check the deployment
 kubectl get all -l app=wildfly
 
-# Test the service
+# Access the Kubernetes Dashboard
+minikube dashboard --url
+# Open the URL in browser to see pods visually
+
+# Access the WildFly service
+minikube service wildfly --url
+# Or use port-forward
 kubectl port-forward svc/wildfly 8080:8080 &
 curl http://localhost:8080
+
+# Access the Management Console
+kubectl port-forward svc/wildfly 9990:9990 &
+open http://localhost:9990/console
+# Login: admin / admin
 ```
 
 **Key Points:**
-- "Zero configuration needed in pods"
-- "Secrets injected at runtime"
-- "Same image, different environments"
-- "Scaling is just changing replica count"
+- "Minikube provides a local Kubernetes cluster for development"
+- "We load our Docker image directly into Minikube - no registry needed"
+- "Zero configuration in pods - everything works out of the box"
+- "Secrets injected at runtime via environment variables"
+- "Same image works in dev (Minikube) and production (real cluster)"
+- "Scaling is just changing replica count: kubectl scale deployment wildfly-golden --replicas=5"
+- "The Kubernetes Dashboard shows everything visually"
+
+**Demo Tips:**
+- Show the Dashboard with all 3 pods running (green checkmarks)
+- Click on a pod in the Dashboard to show logs
+- Show how easy it is to scale: `kubectl scale deployment wildfly-golden --replicas=5`
+- Highlight that the same image runs in Docker locally and Kubernetes
 
 ---
 

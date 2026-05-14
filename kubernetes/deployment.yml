@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
       - name: wildfly
-        image: ghcr.io/yourusername/wildfly-golden:latest
-        imagePullPolicy: Always
+        image: wildfly-golden:demo
+        imagePullPolicy: Never
         ports:
         - containerPort: 8080
           name: http

@@ -26,6 +26,12 @@ RUN ansible-galaxy collection install -r requirements.yml && \
     rm -rf /tmp/ansible /root/.ansible /root/.cache && \
     ln -s /opt/wildfly/wildfly-39.0.1.Final /opt/wildfly/current
 
+# Create WildFly admin user (username: admin, password: admin)
+RUN /opt/wildfly/current/bin/add-user.sh admin admin --silent
+
+# Set permissions
+RUN chown -R wildfly:wildfly /opt/wildfly
+
 # Set working directory
 WORKDIR /opt/wildfly/current
 

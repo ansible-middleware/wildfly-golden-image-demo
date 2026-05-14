@@ -1,0 +1,156 @@
+name: Build WildFly Golden Container Image
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'ansible/**'
+      - 'Dockerfile'
+      - '.github/workflows/build-golden-image.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/wildfly-golden
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build golden image
+        run: |
+          echo "Building golden image with Docker..."
+          docker build -t wildfly-golden:test .
+
+      - name: Test golden image - Start WildFly
+        id: test-start
+        run: |
+          echo "Starting WildFly container for testing"
+          CONTAINER_ID=$(docker run -d \
+            -p 8080:8080 \
+            -p 9990:9990 \
+            -e DB_HOST=postgres \
+            -e DB_NAME=testdb \
+            -e DB_USER=testuser \
+            -e DB_PASSWORD=testpass \
+            wildfly-golden:test)
+
+          echo "test_container_id=$CONTAINER_ID" >> $GITHUB_OUTPUT
+          echo "Waiting for WildFly to start..."
+
+      - name: Test golden image - Health checks
+        timeout-minutes: 3
+        run: |
+          # Wait for WildFly to start (check HTTP port)
+          echo "Checking WildFly HTTP endpoint..."
+          for i in {1..60}; do
+            if curl -sf http://localhost:8080 > /dev/null 2>&1; then
+              echo "✅ WildFly HTTP endpoint is responding"
+              break
+            fi
+            echo "Attempt $i/60: Waiting for WildFly..."
+            sleep 2
+          done
+
+          # Verify HTTP endpoint
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 404 ]; then
+            echo "✅ WildFly HTTP endpoint check passed (status: $HTTP_STATUS)"
+          else
+            echo "❌ WildFly HTTP endpoint check failed (status: $HTTP_STATUS)"
+            exit 1
+          fi
+
+          # Check management interface
+          echo "Checking management interface..."
+          MGMT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9990/management)
+          if [ "$MGMT_STATUS" -eq 200 ] || [ "$MGMT_STATUS" -eq 401 ]; then
+            echo "✅ Management interface check passed (status: $MGMT_STATUS)"
+          else
+            echo "❌ Management interface check failed (status: $MGMT_STATUS)"
+            exit 1
+          fi
+
+      - name: Test golden image - Verify configuration
+        run: |
+          echo "Verifying container configuration..."
+
+          # Check if wildfly user exists
+          docker exec ${{ steps.test-start.outputs.test_container_id }} id wildfly
+
+          # Verify WildFly installation
+          docker exec ${{ steps.test-start.outputs.test_container_id }} test -f /opt/wildfly/bin/standalone.sh
+
+          # Check Java version
+          docker exec ${{ steps.test-start.outputs.test_container_id }} java -version
+
+          echo "✅ Configuration verification passed"
+
+      - name: Cleanup test container
+        if: always()
+        run: |
+          if [ -n "${{ steps.test-start.outputs.test_container_id }}" ]; then
+            echo "Stopping and removing test container"
+            docker stop ${{ steps.test-start.outputs.test_container_id }} || true
+            docker rm ${{ steps.test-start.outputs.test_container_id }} || true
+          fi
+
+      - name: Log in to Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push to registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # Generate version tag
+          VERSION=$(date +%Y%m%d)-${GITHUB_SHA::7}
+
+          # Tag the image
+          docker tag wildfly-golden:test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION
+          docker tag wildfly-golden:test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+          # Push both tags
+          echo "Pushing image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION
+
+          echo "Pushing image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+          echo "✅ Successfully pushed golden image:"
+          echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION"
+          echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            VERSION=$(date +%Y%m%d)-${GITHUB_SHA::7}
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Published Images" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          fi
