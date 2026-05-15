@@ -92,8 +92,8 @@ jobs:
           # Check if wildfly user exists
           docker exec ${{ steps.test-start.outputs.test_container_id }} id wildfly
 
-          # Verify WildFly installation (using /current symlink)
-          docker exec ${{ steps.test-start.outputs.test_container_id }} test -f /opt/wildfly/current/bin/standalone.sh
+          # Verify WildFly installation
+          docker exec ${{ steps.test-start.outputs.test_container_id }} test -f /opt/wildfly/bin/standalone.sh
 
           # Check Java version
           docker exec ${{ steps.test-start.outputs.test_container_id }} java -version
