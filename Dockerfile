@@ -1,6 +1,6 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-LABEL maintainer="Your Name <your.email@example.com>" \
+LABEL maintainer="Ranabir Chakraborty" \
       description="WildFly Golden Image built with Ansible" \
       version="1.0.0"
 
@@ -24,16 +24,16 @@ WORKDIR /tmp/ansible
 RUN ansible-galaxy collection install -r requirements.yml && \
     ansible-playbook -i inventory configure.yml && \
     rm -rf /tmp/ansible /root/.ansible /root/.cache && \
-    ln -s /opt/wildfly/wildfly-39.0.1.Final /opt/wildfly/current
+    ln -s /opt/wildfly-39.0.1.Final /opt/wildfly
 
 # Create WildFly admin user (username: admin, password: admin)
-RUN /opt/wildfly/current/bin/add-user.sh admin admin --silent
+RUN /opt/wildfly/bin/add-user.sh admin admin --silent
 
 # Set permissions
-RUN chown -R wildfly:wildfly /opt/wildfly
+RUN chown -R wildfly:wildfly /opt/wildfly-39.0.1.Final /opt/wildfly
 
 # Set working directory
-WORKDIR /opt/wildfly/current
+WORKDIR /opt/wildfly
 
 # Switch to non-root user
 USER wildfly
@@ -42,4 +42,4 @@ USER wildfly
 EXPOSE 8080 9990
 
 # Start WildFly
-CMD ["/opt/wildfly/current/bin/standalone.sh", "-b", "0.0.0.0", "-bmanagement", "0.0.0.0"]
+CMD ["/opt/wildfly/bin/standalone.sh", "-b", "0.0.0.0", "-bmanagement", "0.0.0.0"]
